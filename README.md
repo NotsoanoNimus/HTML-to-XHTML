@@ -39,4 +39,4 @@ This is important because the pretty-printed version tends to interfere with _do
 <b>Item One</b> and a half<b>, Item Two</b>
 ```
 
-When this is "pretty-printed", it ends up rendering like so in the XHTML document: `Item One and a half  , Item Two**` because the pretty-print feature is separating the line at the boundary and adding the desired spacing.
+When this is "pretty-printed", it ends up rendering like so in the XHTML document: `Item One and a half  , Item Two` because the pretty-print feature is separating the line at the boundary and adding the desired spacing.
