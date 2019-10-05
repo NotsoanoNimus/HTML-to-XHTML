@@ -26,7 +26,7 @@ Consider this nice, but slightly malformed HTML file.
 ```
 
 Notice the few tags that have adjusted and become nested properly now according to the XHTML standard. Can you spot the other changes (aside from the formatting)?
-[An example of the conversion results from the above file.](https://raw.githubusercontent.com/NotsoanoNimus/Pretty-Cool-XHTML/master/docs/conversionResults.png)
+![An example of the conversion results from the above file.](https://raw.githubusercontent.com/NotsoanoNimus/Pretty-Cool-XHTML/master/docs/conversionResults.png)
 
 
 ### Important Note
