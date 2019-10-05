@@ -17,6 +17,10 @@ public class HtmlToXhtml {
 
 	// Main function.
 	public static void main(String[] args) {
+		if(args.length == 0) {
+			System.out.println("Please enter a valid file as a parameter to this application.");
+			System.exit(1);
+		}
 		// Read the input file location from the first command-line argument.
 		File inputHtmlFile = new File(args[0]);
 		// Basic sanity check: does the file exist?
@@ -41,34 +45,47 @@ public class HtmlToXhtml {
 			e.printStackTrace();
 			System.exit(1);
 		}
-		if(fileContent == null) {
-			System.out.println("Input file provided no valid content, or was empty.");
-			System.exit(1);
-		}
 		// Begin building the header, noting that TITLE is a required HEAD item.
 		StringBuilder newBody = new StringBuilder();
-		String bodyContent = fileContent.toString();
+		String htmlContent = fileContent.toString();
 		// Assuming the XML, DOCTYPE, and html tag attributes here, please change them as needed.
-		newBody.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+		newBody
+			.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
 			.append("\n<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">")
-			.append("\n<html xmlns=\"http://www.w3.org/TR/xhtml1\" xml:lang=\"en\" lang=\"en\">\n<head>\n");
+			.append("\n<html xmlns=\"http://www.w3.org/TR/xhtml1\" xml:lang=\"en\" lang=\"en\">\n<head>");
 		// Check if HEAD content is already defined -- if so, add it; if not create one.
 		// The HEAD element is INTENTIONALLY NOT CLOSED here.
-		if(bodyContent.contains("<head>")) {
-			newBody.append(bodyContent.substring(bodyContent.indexOf("<head>") + 6, bodyContent.indexOf("</head>")));
+		if(htmlContent.contains("<head>")) {
+			String headerContent =
+					htmlContent.substring(htmlContent.indexOf("<head>") + 6, htmlContent.indexOf("</head>"));
+			if(headerContent.substring(0, 1) != "\n") {
+				// Prepend a new-line character if there isn't one in place already. Aesthetix.
+				headerContent = "\n" + headerContent;
+			}
+			// Forcibly close self-terminating tags (like 'meta' and 'link').
+			headerContent = headerContent
+					.replaceAll("(>)?\\s+<", "$1\n<")
+					.replaceAll("(?i)<\\s*(" + SELF_CLOSING_TAGS + ")(\\s*[^>]*?[^/])?>", "<$1$2 />");
+			newBody.append(headerContent);
 		}
 		// Check for the REQUIRED TITLE element in the HEAD section.
-		if(bodyContent.contains("<title>") && !newBody.toString.contains("<title>")) {
-			newBody.append("<title>" + bodyContent.substring(bodyContent.indexOf("<title>") + 7, bodyContent.indexOf("</title>")) + "</title>");
-		} else {
+		if(htmlContent.contains("<title>") && !newBody.toString().contains("<title>")) {
+			String titleContent = htmlContent.substring(htmlContent.indexOf("<title>") + 7, htmlContent.indexOf("</title>"));
+			// Ensure there are no tags inside the existing title content.
+			titleContent = titleContent.replaceAll("<.*?>", "");
+			newBody.append("<title>" + titleContent + "</title>");
+		} else if(!newBody.toString().contains("<title>")) {
+			// A title doesn't exist, time to add a default one so generic it will have to be changed. >:)
 			newBody.append("<title>File Converted by HTML-to-XHTML Java Conversion Tool</title>");
 		}
+		// Close out the HEAD element now.
 		newBody.append("\n</head>");
 		// And finally, correct the body's HTML.
-		newBody.append("\n<body>" + htmlToPrint(bodyContent) + "\n</body>\n</html>");
+		newBody.append("\n<body>" + htmlToPrint(htmlContent) + "\n</body>\n</html>");
 
 		// Can add something here besides just outputting the result, like writing to a corrected .xhtml file.
-		System.out.println(newBody.toString());
+		System.out.println(newBody.toString()); // THIS IS THE PRETTY-PRINT VERSION
+		System.out.println("\n\nMinimized XHTML:\n" + stripPrettyPrint(newBody.toString()));
 		System.exit(0);
 	}
 
@@ -270,8 +287,8 @@ public class HtmlToXhtml {
 				System.out.println("MOD TAG : " + modifiedTag.toString() + " - POS : " + pos);
 				// Pretty-print attempt, delete the indentation BEFORE outputting the closing tag.
 				if (!isSelfClosing && isClosingTag && !modifiedTag.toString().equals("")) {
-					if ( contentIndent.length() >= 2 ) {
-                        contentIndent.delete( 0, 2 );
+					if (contentIndent.length() >= 2) {
+                        contentIndent.delete(0, 2);
                     }
 				}
 				// Add the new content onto the final XHTML body, provided the tagContents could be retrieved
@@ -295,7 +312,9 @@ public class HtmlToXhtml {
 			// Go through the tags remaining on the stack and close them sequentially.
 			//     These will be added AFTER the trailing text above.
 			for(int y = tagStack.size() - 1; y >= 0; y--) {
-				contentIndent.delete(contentIndent.length() - 2, contentIndent.length());
+				if (contentIndent.length() >= 2) {
+					contentIndent.delete(contentIndent.length() - 2, contentIndent.length());
+				}
 				finalXhtml.append("\n" + contentIndent + "</" + tagStack.get(y) + ">");
 			}
 
@@ -333,4 +352,9 @@ public class HtmlToXhtml {
 		return inputHTML.substring(previousTagLocation);
 	}
 
+
+	// Get rid of the cutesy pretty-print because it can really mess with some of the spacing in HTML documents.
+	private static String stripPrettyPrint(String content) {
+		return content.replaceAll("\\R(\\s+)?", "");
+	}
 }
