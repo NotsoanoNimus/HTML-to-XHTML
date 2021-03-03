@@ -15,6 +15,7 @@ public class HtmlToXhtml {
 	private static final String MINIMIZABLE_ATTRIBUTES = "compact|checked|declare|readonly|disabled|"
 			+ "selected|defer|ismap|nohref|noshade|nowrap|multiple|noresize";
 
+
 	// Main function.
 	public static void main(String[] args) {
 		if(args.length == 0) {
@@ -56,26 +57,18 @@ public class HtmlToXhtml {
 		// Check if HEAD content is already defined -- if so, add it; if not create one.
 		// The HEAD element is INTENTIONALLY NOT CLOSED here.
 		if(htmlContent.contains("<head>")) {
-			String headerContent =
-					htmlContent.substring(htmlContent.indexOf("<head>") + 6, htmlContent.indexOf("</head>"));
-			if(headerContent.substring(0, 1) != "\n") {
-				// Prepend a new-line character if there isn't one in place already. Aesthetix.
-				headerContent = "\n" + headerContent;
-			}
+			String headContent = "\n" + htmlContent.substring(
+				htmlContent.indexOf("<head>") + 6, htmlContent.indexOf("</head>"));
 			// Forcibly close self-terminating tags (like 'meta' and 'link').
-			headerContent = headerContent
+			headContent = headContent
 					.replaceAll("(>)?\\s+<", "$1\n<")
-					.replaceAll("(?i)<\\s*(" + SELF_CLOSING_TAGS + ")(\\s*[^>]*?[^/])?>", "<$1$2 />");
-			newBody.append(headerContent);
-		}
+					.replaceAll("(?i)<\\s*(" + SELF_CLOSING_TAGS + ")(\\s*[^>]*?[^/])?>", "<$1$2 />")
+					.replaceAll("<([^>]+)>", "<\\L$1>"); //lower-case all HEAD tags and attributes
+			newBody.append(headContent);
+		} else { newBody.append("<head>"); }
 		// Check for the REQUIRED TITLE element in the HEAD section.
-		if(htmlContent.contains("<title>") && !newBody.toString().contains("<title>")) {
-			String titleContent = htmlContent.substring(htmlContent.indexOf("<title>") + 7, htmlContent.indexOf("</title>"));
-			// Ensure there are no tags inside the existing title content.
-			titleContent = titleContent.replaceAll("<.*?>", "");
-			newBody.append("<title>" + titleContent + "</title>");
-		} else if(!newBody.toString().contains("<title>")) {
-			// A title doesn't exist, time to add a default one so generic it will have to be changed. >:)
+		if(!newBody.toString().contains("<title>")) {
+			// A title doesn't exist, time to add a default one so generic it will have to be changed.
 			newBody.append("<title>File Converted by HTML-to-XHTML Java Conversion Tool</title>");
 		}
 		// Close out the HEAD element now.
@@ -95,7 +88,11 @@ public class HtmlToXhtml {
 	 */
 	private static String htmlToPrint(String inputContent) {
 		// Set the local variable to the document text with all line breaks removed.
-		String newDoc = inputContent.replaceAll("\\R+", " "); //newDoc.replace(System.getProperty("line.separator"), "");
+		String newDoc = inputContent.replaceAll("\\R+", " ");
+		// Immediately replace any empty Definition Lists "dl", or UL/OL tags.
+		newDoc = newDoc.replaceAll("<\\s*([duo]l)\\s*[^>]*?>[\\s]*<\\s*\\/([duo]l)\\s*[^>]*?>", "");
+		// Force any "body" tag to be lower-case.
+		newDoc = newDoc.replaceAll("(?i)<(\\/?)body>", "<$1body>");
 		String xhtmlBody = "";
 
 		if(newDoc != null && newDoc.contains("<body>")) {
@@ -107,12 +104,11 @@ public class HtmlToXhtml {
 
 			// List all tags, closing tags, and self-closing tags in the document body (and their indices).
 			//     Index the map by the start index of the substring (which will always be unique).
-			LinkedHashMap<Integer, String> tagCollection = new LinkedHashMap<Integer, String>();
-			LinkedHashMap<Integer, String> tagContents = new LinkedHashMap<Integer, String>();
+			LinkedHashMap<Integer, String> tagCollection = new LinkedHashMap<>();
+			LinkedHashMap<Integer, String> tagContents = new LinkedHashMap<>();
 			String trailingText = getHtmlTags(tagCollection, tagContents, newDoc);
 
-			// Iterate through each tag and track the DOM nesting level, inserting closing tags as needed.
-			//     This section also breaks apart attributes and corrects them.
+			// This section breaks apart attributes and corrects them per-tag.
 			for(Integer pos : tagCollection.keySet()) {
 				String tag = tagCollection.get(pos);
 				System.out.println("Examining position " + pos + " of HTML; tag: " + tag);
@@ -121,6 +117,8 @@ public class HtmlToXhtml {
 				tag = tag.replaceAll("<\\s+", "<");
 				// Same for the closing end of the tag.
 				tag = tag.replaceAll("\\s+(\\s/)?>", "$1>");
+				// Remove any tag namespace prefixes.
+				tag = tag.replaceAll("<\\w+:([^\\s]+)", "<$1");
 				// Quote unquoted attribute values, e.g. (class=test) --> (class="test")
 				tag = tag.replaceAll("\\s+(\\w+=)([^\"'][^\\s>]+)", " $1\"$2\"");
 				// Expand minimized attributes.
@@ -137,22 +135,42 @@ public class HtmlToXhtml {
 				// Set the element type to the first match for the first capture group.
 				String elementType = matchedElementType.group(1);
 				// Get and sanitize the attributes of the element.
-				ArrayList<String> tagAttributes = new ArrayList<String>();
+				ArrayList<String> tagAttributes = new ArrayList<>();
 				Matcher matchedAttributes =
 					Pattern.compile("\\s+(\\w+)(=[^\\s].+?)(?:([\"'])|\\/?>)").matcher(tag);
+				StringBuilder styleContents = new StringBuilder();
 				while(matchedAttributes.find()) {
+					/* FIXUP to collect all inline STYLE information that already exists and aggregate
+					      it with any tag/attribute replacements, e.g. bgcolor --> background-color */
+					// Simultaneously extract the single attribute and convert the attribute name to lower case.
+					if ( matchedAttributes.group( 1 ).equalsIgnoreCase( "style" ) ) {
+						// If the attribute name is 'style', append to the current style contents variable.
+						String styleIdentity = matchedAttributes.group( 2 ) != null ? matchedAttributes.group( 2 ) : "";
+						styleIdentity = styleIdentity.substring( 1 ).replaceAll( "['\"]+", "" );
+						styleContents.append( styleIdentity + (styleIdentity.endsWith( ";" ) ? "" : ";") );
+						continue;
+					} else if ( matchedAttributes.group( 1 ).equalsIgnoreCase( "bgcolor" ) ) {
+						// If the attribute name is 'bgcolor', drop the attribute and add 'background-color' to the style contents.
+						//  This is permissible to duplicate, but can lead to conflicting colors.
+						String colorIdentity = matchedAttributes.group( 2 ) != null ? matchedAttributes.group( 2 ) : "";
+						colorIdentity = colorIdentity.substring( 1 ).replaceAll( "['\"]+", "" );
+						styleContents.append( "background-color:" + colorIdentity + ";" );
+						continue;
+					}
+					/* END FIXUP */
 					// Simultaneously extract the single attribute and convert the attribute name to lower case.
 					StringBuilder attribute = new StringBuilder();
-					attribute.append(
-							matchedAttributes.group(1).toLowerCase());
-					attribute.append(
-							matchedAttributes.group(2) != null ? matchedAttributes.group(2) : "");
-					attribute.append(
-							matchedAttributes.group(3) != null ? matchedAttributes.group(3) : "");
+					attribute.append(matchedAttributes.group(1).toLowerCase());
+					attribute.append(matchedAttributes.group(2) != null ? matchedAttributes.group(2) : "");
+					attribute.append(matchedAttributes.group(3) != null ? matchedAttributes.group(3) : "");
 					System.out.println("    ATTRIBUTE : " + attribute.toString());
 					// Add the finished attribute to the final tagAttributes list object.
 					tagAttributes.add(attribute.toString());
 				}
+
+				// Create the finalized style tagging.
+				String styleTagFinal = styleContents.length() > 0
+					? " style=\"" + styleContents.toString() + "\"" : null;
 
 				// Build the full corrected tag to append to the final XHTML body.
 				StringBuilder xhtmlTag = new StringBuilder();
@@ -160,12 +178,17 @@ public class HtmlToXhtml {
 				for(String attrib : tagAttributes) {
 					xhtmlTag.append(" " + attrib);
 				}
+				// Append the final style information, if defined, then the closing angle bracket.
+				if ( styleTagFinal != null ) {
+					xhtmlTag.append( styleTagFinal );
+				}
 				xhtmlTag.append(">");
 
 				// Forcibly close the tag if it's a self-terminating type.
 				String xhtmlTagAsString = xhtmlTag.toString();
 				xhtmlTagAsString = xhtmlTagAsString.replaceAll(
 						"(?i)<\\s*(" + SELF_CLOSING_TAGS + ")(\\s*[^>]*?[^/])?>", "<$1$2 />");
+				System.out.println("    FINAL TAG : " + xhtmlTagAsString);
 
 				// Append the new content to the intermediate object.
 				if(tagContents.get(pos) != null) {
@@ -177,30 +200,34 @@ public class HtmlToXhtml {
 
 			// Clean up any special characters.
 			String correctedHtml = xhtmlCorrected.toString() + trailingText;
-			correctedHtml = correctedHtml.replace( "&reg;", "�" ).replace( "&copy;", "�" );
+			correctedHtml = correctedHtml.replace( "&reg;", "®" ).replace( "&copy;", "©" );
 			// Add a non-breaking space behind the line-break to force their acknowledgement.
 			correctedHtml = correctedHtml.replaceAll("(?i)<br", "&#160;<br");
 
 			// Now fix the tag nesting, using the same process as above to read back in the correctedHtml.
-			tagCollection = new LinkedHashMap<Integer, String>();
-			tagContents = new LinkedHashMap<Integer, String>();
+			//   Reusing variables here doesn't hurt anything.
+			tagCollection = new LinkedHashMap<>();
+			tagContents = new LinkedHashMap<>();
+			// Pass in the maps to repopulate them, and assign all leftover content to this String.
 			trailingText = getHtmlTags(tagCollection, tagContents, correctedHtml);
 			StringBuilder finalXhtml = new StringBuilder();
 
 			// Set up a tagStack as a pseudo-stack to track opening tags,
 			//     which are 'popped' as the corresponding closing tags are encountered.
-			ArrayList<String> tagStack = new ArrayList<String>();
+			ArrayList<String> tagStack = new ArrayList<>();
 
 			// Spacing StringBuilder to control a little bit of pretty-printing.
 			StringBuilder contentIndent = new StringBuilder();
 			// Append an initial spacing because this content is nested inside of the <body> tag anyhow.
 			contentIndent.append("  ");
-			// Process each matched tag in the collection.
+			// Iterate through each tag and track the DOM nesting level, inserting closing tags as needed.
+			//   This section will collapse a section where there are mismatched tags and rearrange
+			//   the nesting appropriately to create valid tag layering.
 			for(Integer pos : tagCollection.keySet()) {
 				String tag = tagCollection.get(pos);
 				StringBuilder modifiedTag = new StringBuilder();
 				// Attempt to find the element type from the tag (no attributes or angle brackets).
-				Matcher matchedElementType = Pattern.compile("<\\s*(/?\\w+).*?>").matcher(tag);
+				Matcher matchedElementType = Pattern.compile("<\\s*(/?\\w+)[^>]*?>").matcher(tag);
 				// If it wasn't found (meaning invalid tag), move to the next tag in the list.
 				if(!matchedElementType.find()) {
 					continue;
@@ -216,6 +243,30 @@ public class HtmlToXhtml {
 				// Take an action based on the type of tag being parsed.
 				if(!isClosingTag && !isSelfClosing) {
 					// Tag is an "opening" tag but isn't self-terminating; add it to the stack.
+					//   If it's an LI tag, check the outer wrapping tag to make sure it's not an orphan.
+					if(!tagStack.isEmpty()) {
+						if(elementType.equalsIgnoreCase("li") && !(
+							tagStack.get(tagStack.size()-1).equalsIgnoreCase("ul")
+							|| tagStack.get(tagStack.size()-1).equalsIgnoreCase("ol")
+						)) {
+							// If the LI tag isn't wrapped by one of the two list types, assume an UL wrapper.
+							//   This seems to be most HTML clients' default behavior.
+							tagStack.add("ul");
+							modifiedTag.append("<ul>");
+						} else if(!elementType.equalsIgnoreCase("li") && (
+							tagStack.get(tagStack.size()-1).equalsIgnoreCase("ul")
+							|| tagStack.get(tagStack.size()-1).equalsIgnoreCase("ol")
+						)) {
+							// If the parent tag is an UL or OL element, but the next opening tag in line
+							//   isn't, add an LI tag in the middle by force. It will be auto-closed later.
+							tagStack.add("li");
+							modifiedTag.append("<li>");
+						}
+					} else if(tagStack.isEmpty() && elementType.equalsIgnoreCase("li")) {
+						// Cases where LI is encountered at the root of a document.
+						tagStack.add("ul");
+						modifiedTag.append("<ul>");
+					}
 					tagStack.add(elementType);
 					// ... and also add it to the final tag output (without any modification) for the XHTML.
 					modifiedTag.append(tag);
@@ -286,17 +337,30 @@ public class HtmlToXhtml {
 				// DEBUG
 				System.out.println("MOD TAG : " + modifiedTag.toString() + " - POS : " + pos);
 				// Pretty-print attempt, delete the indentation BEFORE outputting the closing tag.
-				if (!isSelfClosing && isClosingTag && !modifiedTag.toString().equals("")) {
-					if (contentIndent.length() >= 2) {
+				if(!isSelfClosing && isClosingTag && !modifiedTag.toString().equals("")) {
+					if(contentIndent.length() >= 2) {
                         contentIndent.delete(0, 2);
                     }
 				}
+
+				System.out.println("\n\n\n~~~ TAG: " + tag + "\n~~~~~ Contents: " + tagContents.get(pos)
+					+ "\n~~~~~ ELEMENT: " + elementType + "\n~~~~~ MOD TAG: " + modifiedTag.toString());
+
 				// Add the new content onto the final XHTML body, provided the tagContents could be retrieved
 				//     and provided the final element is not just a whitespace item.
 				if(tagContents.get(pos) != null && !modifiedTag.toString().equals("")) {
 					if(!tagContents.get(pos).equals("") && !tagContents.get(pos).matches("\\s+")) {
-						// Since the tagContents key actually has something in it, add it.
-						finalXhtml.append("\n  " + contentIndent.toString() + tagContents.get(pos));
+						if(elementType.equalsIgnoreCase("li") || elementType.matches("(?i)\\/[uo]l")) {
+							// If this was a LIST item opening, or a List TAG >>CLOSING<<,
+							//   check the tagContents for intermediate content. If some exists,
+							//   wrap it in LI tags as well.
+							finalXhtml.append("\n  " + contentIndent.toString() +
+												"<li>" + tagContents.get(pos) + "</li>");
+							System.out.println("-- Added <(li|/ul|/ol)>:   " + tagContents.get(pos));
+						} else {
+							// Since the tagContents key actually has something in it, add it w/o modification.
+							finalXhtml.append("\n  " + contentIndent.toString() + tagContents.get(pos));
+						}
 					}
 					finalXhtml.append("\n" + contentIndent.toString() + modifiedTag.toString());
 				}
@@ -320,22 +384,22 @@ public class HtmlToXhtml {
 
 			// Final StringBuilder conversion for the return variable.
 			xhtmlBody = finalXhtml.toString();
+
 		} else {
 			// Return some default "error" text. Shouldn't ever happen.
-			xhtmlBody = "<p>Unable to display CKO results.</p>";
+			xhtmlBody = "<p>Unable to convert this document to XHTML.</p>";
 		}
 
-		// DEBUG
-		// System.out.println("FINAL XHTML : \n" + xhtmlBody);
 		// Return the finished XHTML.
 		return xhtmlBody;
 	}
 
 
 	// Populate the first two parameters (passed as reference), using the third parameter.
-	public static String getHtmlTags(LinkedHashMap<Integer, String> collection, LinkedHashMap<Integer, String> contents, String inputHTML) {
+	public static String getHtmlTags(LinkedHashMap<Integer, String> collection,
+									 LinkedHashMap<Integer, String> contents, String inputHTML) {
 		// Effectively 'grep' all tags out of the provided input string (raw HTML).
-		Matcher m = Pattern.compile("(<\\s*/?\\w+.*?>)").matcher(inputHTML);
+		Matcher m = Pattern.compile("(<\\s*/?\\w+[^>]*?>)").matcher(inputHTML);
 		// Set up the initial previousTagLocation as the very base of the string.
 		int previousTagLocation = 0;
 		// While there are more matches to iterate...
@@ -355,6 +419,6 @@ public class HtmlToXhtml {
 
 	// Get rid of the cutesy pretty-print because it can really mess with some of the spacing in HTML documents.
 	private static String stripPrettyPrint(String content) {
-		return content.replaceAll("\\R(\\s+)?", "");
+		return content.replaceAll("\\R+\\s*", "");
 	}
 }

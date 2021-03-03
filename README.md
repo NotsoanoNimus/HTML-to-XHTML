@@ -1,9 +1,7 @@
-# Pretty-Cool-XHTML
-A quick and dirty Java-based pretty-printer and HTML-to-XHTML converter. Sanitizes documents to the best of its ability. Bug reports are appreciated!
+# Java HTML to XHTML Converter
+A Java-based pretty-printer and HTML-to-XHTML converter. Sanitizes documents to the best of its ability.
 
 Simply feed this application an input file and it will generate beautified console output (or a file if you modify it), as you wish.
-
-_It's pretty cool_ `I guess`. :)
 
 
 ## Example
@@ -25,11 +23,12 @@ Consider this nice, but slightly malformed HTML file.
 </html>
 ```
 
-Notice the few tags that have adjusted and become nested properly now according to the XHTML standard. Can you spot the other changes (aside from the formatting)?
 ![An example of the conversion results from the above file.](https://raw.githubusercontent.com/NotsoanoNimus/Pretty-Cool-XHTML/master/docs/conversionResults.png)
 
+_Notice the few tags that have adjusted and become nested properly now according to the XHTML standard, as well as the corrected document formatting._
 
-### Important Note
+
+## Important Note
 The generated XHTML from this utility has two output options:
 - Pretty Printed (neat formatting).
 - Minimized.
